@@ -31,6 +31,7 @@ Bitbucket Server / Data Center의 PR 웹훅을 받아 Claude로 코드리뷰를 
 - [코드리뷰 방식](#review-method)
 - [엔드포인트별 흐름](#endpoint-flows)
 - [빠른 시작](#quick-start)
+- [CRG(Code Review Graph) 사용](#code-review-graph)
 - [환경변수](#configuration)
 - [Bitbucket 웹훅 연결](#webhooks)
 - [재리뷰 요청](#re-review)
@@ -271,6 +272,74 @@ npm run dev
 
 
 서버 포트는 `8088`로 고정되어 있습니다. `GET /health-check`로 확인할 수 있습니다. 로컬 서버도 연결된 웹훅 요청을 받으면 실제 PR 댓글과 Slack 알림을 보냅니다.
+
+<a id="code-review-graph"></a>
+
+## CRG(Code Review Graph) 사용
+
+CRG는 **변경된 함수·컴포넌트를 사용하는 파일 중 이번 PR에서 수정되지 않은 파일**을 찾아 리뷰 맥락을 보완하는 선택 기능입니다. 예를 들어 `getUser(id)`의 필수 인자가 바뀌었는데 이를 호출하는 `profile.ts`가 PR에 없다면, 해당 파일도 확인하도록 Claude 입력과 최종 PR 댓글에 힌트를 제공합니다. 참조 관계가 있다는 이유만으로 버그나 수정 누락으로 확정하지는 않습니다.
+
+### 연동 방식과 역할
+
+이 프로젝트는 `code-review-graph`를 npm 라이브러리로 import하지 않습니다. **별도로 설치한 외부 CLI를 실행하고, 생성된 SQLite DB를 직접 읽습니다.** CRG의 MCP 서버는 사용하지 않으며 `npm ci`만으로 CLI가 설치되지 않습니다.
+
+| 구성 요소 | 이 프로젝트에서의 역할 |
+|---|---|
+| `code-review-graph` CLI | 대상 저장소의 그래프를 최초 생성(`build`)하고 이후 갱신(`update`) |
+| Node.js 내장 `node:sqlite` | `.code-review-graph/graph.db`를 읽기 전용으로 열어 `nodes`·`edges` 조회 |
+| TypeScript 컴파일러 API | 변경 전 소스와 PR diff를 바탕으로 매개변수·props·반환값 등 인터페이스 변경 판정 |
+| Claude | PR diff·설명과 CRG 힌트를 함께 받아 코드리뷰 작성 |
+
+CRG는 참조 관계를 제공하고, 인터페이스 변경 판정과 댓글 구성은 이 서비스가 담당합니다. 구현은 [워크트리·CLI 실행](src/services/contextClone/index.ts), [심볼 참조 조회](src/services/codeReview/symbolReference.ts), [인터페이스 판정](src/services/codeReview/interfaceChange.ts)에서 확인할 수 있습니다.
+
+### 준비와 설정
+
+1. Node.js **24 이상, 25 미만**, Git, 대상 저장소의 기존 clone을 준비합니다. clone에는 `origin` 원격과 `master` 브랜치가 있어야 하며, 서버 실행 계정에 원격 fetch 권한이 필요합니다. 서비스가 대상 저장소를 자동으로 clone하지는 않습니다.
+2. [code-review-graph 저장소](https://github.com/tirth8205/code-review-graph)의 설치 안내에 따라 CLI와 실행 환경을 별도로 준비합니다. **서버 실행 계정의 PATH**에서 아래 명령이 실행되는지 확인합니다.
+
+   ```bash
+   code-review-graph --version
+   code-review-graph build --help
+   code-review-graph update --help
+   ```
+
+   이 프로젝트는 호환 CLI 버전을 고정하지 않습니다. 설치 버전이 `build --repo <path> --quiet`, `update --repo <path> --quiet` 옵션과 위 DB 경로·테이블 구조를 지원해야 합니다.
+
+3. `.env.local` 또는 `.env.production`에 다음 값을 설정하고 서버를 시작합니다.
+
+   ```dotenv
+   # 리뷰 대상 저장소의 기존 clone 절대 경로
+   CODE_REVIEW_CONTEXT_CLONE_PATH=/path/to/example-app
+   # 봇만 사용하는 워크트리 경로. 상대 경로는 서버 실행 디렉터리 기준
+   CODE_REVIEW_MASTER_WORKTREE_DIR=.worktrees/code-review-master
+   # 일반 Claude 리뷰에 CRG 힌트를 함께 제공
+   CODE_REVIEW_CRG_ONLY=false
+   ```
+
+서버 실행 계정은 컨텍스트 clone의 Git 메타데이터와 전용 워크트리에 쓸 수 있어야 합니다. **워크트리 경로에는 개인 작업 폴더를 지정하지 마세요.** 매 리뷰에서 이 경로를 `origin/master`로 강제 동기화하므로 추적 파일의 로컬 수정이 사라집니다. 원본 clone에는 fetch만 수행하며 기존 체크아웃과 미커밋 작업 파일을 보존합니다.
+
+### 리뷰에서 사용하는 흐름
+
+자동 리뷰와 수동 재리뷰 모두 다음 과정을 사용합니다.
+
+1. 원본 clone에서 `git fetch origin master`를 실행합니다.
+2. 봇 전용 detached 워크트리를 생성하거나 기존 워크트리를 `origin/master`로 갱신합니다. 워크트리는 리뷰가 끝나도 유지하고 재사용합니다.
+3. 워크트리에 그래프 DB가 없으면 CLI의 `build`, 있으면 `update`를 실행합니다. 최초 생성은 저장소 크기에 따라 시간이 걸릴 수 있습니다.
+4. PR diff의 삭제·문맥 줄에 있는 변경 전 라인 번호를 그래프의 `Function` 노드 범위와 대조합니다. 해당 심볼을 향하는 `CALLS`·`REFERENCES` 관계를 조회하고, PR에서 이미 변경한 파일은 참조 파일 목록에서 제외합니다.
+5. 인터페이스 변경을 판정해 Claude에 심볼·파일 경로·변경 요약을 힌트로 전달합니다. 호출부 소스 전체를 추가로 전달하는 방식은 아닙니다. 최종 PR 댓글에도 호출부 확인 항목을 붙입니다.
+
+매개변수·props·반환값의 호환성에 영향을 줄 수 있는 변경은 **호출부 확인이 필요합니다**, 판정하지 못한 변경은 **자동 확인이 제한된 항목**으로 표시합니다. 구현만 바뀌었거나 호환 가능한 인터페이스 변경으로 판정한 항목은 힌트와 댓글에서 제외합니다.
+
+### 전용 모드·실패 처리·제약
+
+- `CODE_REVIEW_CRG_ONLY=true`이면 Claude를 호출하지 않고 CRG 결과만 PR 댓글로 게시합니다. 로컬 출력만 확인하는 모드가 아니므로 실제 댓글이 남습니다.
+- 일반 모드에서 Claude가 `budget_exceeded`로 실패해도 이미 계산한 CRG 결과를 게시합니다. CRG 전용 모드와 예산 초과 결과에는 정상 리뷰 완료 시그니처가 없어 이후 재리뷰를 요청할 수 있습니다.
+- 환경변수 미설정, Git 인증 실패, CLI 부재·호환성 문제, DB 조회 오류가 나면 일반 모드에서는 힌트 없이 Claude 리뷰를 계속 시도합니다. 빈 결과만으로는 참조가 없는 경우와 조회 실패를 구분할 수 없으므로 서버 로그를 함께 확인합니다.
+- 그래프 기준은 **최신 master**이며 PR 브랜치를 checkout하지 않습니다. PR의 기준 커밋과 master가 다르거나 새로 추가된 심볼처럼 변경 전 라인과 매칭할 수 없는 경우에는 참조를 놓칠 수 있습니다. 전체 영향 범위를 보장하는 검사가 아닙니다.
+- Git·그래프 갱신은 프로세스 내부에서 한 번에 하나씩 실행하지만 이후 조회는 잠금 밖에서 수행합니다. 여러 프로세스가 같은 워크트리를 공유하는 구성까지 보호하지는 않습니다.
+- 기본 Docker 이미지에는 CRG CLI와 대상 clone이 없습니다. 컨테이너에서 사용하려면 CLI가 설치된 이미지, Git 인증, clone·워크트리의 지속 저장 공간을 별도로 준비해야 합니다.
+
+세부 운영 조건과 검증 대상은 [CRG 설정 가이드](docs/crg-symbol-reference.md)를 참고하세요.
 
 <a id="configuration"></a>
 
