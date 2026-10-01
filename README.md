@@ -7,7 +7,7 @@
 PR이 열리면 변경사항을 읽고, 코드 옆에 리뷰를 남깁니다.<br>
 Claude 스트리밍 리뷰부터 Slack 알림, 선택적 심볼 참조 분석까지.
 
-[![Node.js](https://img.shields.io/badge/Node.js-24.x-339933?style=flat-square)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-25.x-339933?style=flat-square)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square)](package.json)
 [![Bitbucket](https://img.shields.io/badge/Bitbucket-Server%20%2F%20Data%20Center-0052CC?style=flat-square)](#webhooks)
 [![License: MIT](https://img.shields.io/badge/License-MIT-D97757?style=flat-square)](LICENSE)
@@ -241,7 +241,7 @@ flowchart TD
 
 ## 빠른 시작
 
-Node.js **24 이상, 25 미만**과 npm이 필요합니다. `node:sqlite` 내장 모듈을 사용하며, 버전 관리 파일은 최신 Node 24를 선택합니다.
+Node.js **25 이상, 26 미만**과 npm이 필요합니다. `node:sqlite` 내장 모듈을 사용하며, 버전 관리 파일은 최신 Node 25를 선택합니다.
 
 ### 1. 설치
 
@@ -294,7 +294,7 @@ CRG는 참조 관계를 제공하고, 인터페이스 변경 판정과 댓글 �
 
 ### 준비와 설정
 
-1. Node.js **24 이상, 25 미만**, Git, 대상 저장소의 기존 clone을 준비합니다. clone에는 `origin` 원격과 `master` 브랜치가 있어야 하며, 서버 실행 계정에 원격 fetch 권한이 필요합니다. 서비스가 대상 저장소를 자동으로 clone하지는 않습니다.
+1. Node.js **25 이상, 26 미만**, Git, 대상 저장소의 기존 clone을 준비합니다. clone에는 `origin` 원격과 `master` 브랜치가 있어야 하며, 서버 실행 계정에 원격 fetch 권한이 필요합니다. 서비스가 대상 저장소를 자동으로 clone하지는 않습니다.
 2. [code-review-graph 저장소](https://github.com/tirth8205/code-review-graph)의 설치 안내에 따라 CLI와 실행 환경을 별도로 준비합니다. **서버 실행 계정의 PATH**에서 아래 명령이 실행되는지 확인합니다.
 
    ```bash

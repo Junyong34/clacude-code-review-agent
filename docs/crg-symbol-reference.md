@@ -4,7 +4,7 @@ CRG는 변경 심볼을 참조하지만 이번 PR에서 수정되지 않은 파�
 
 ## 실행 조건
 
-- Node.js 24 이상, 25 미만: `node:sqlite`로 그래프 DB를 읽습니다.
+- Node.js 25 이상, 26 미만: `node:sqlite`로 그래프 DB를 읽습니다.
 - Git과 이미 준비된 대상 저장소 clone: 원격 이름 `origin`, 브랜치 `master`가 필요합니다.
 - 서버의 PATH에서 실행 가능한 `code-review-graph` CLI와 그 실행 환경: npm 의존성이 아니므로 별도 설치가 필요합니다.
 - 대상 원격 저장소 fetch 권한, 컨텍스트 클론의 Git 메타데이터와 전용 워크트리 쓰기 권한이 필요합니다.

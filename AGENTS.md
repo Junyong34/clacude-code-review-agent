@@ -15,7 +15,7 @@ Bitbucket Server / Data Center의 단일 저장소 PR을 Claude로 리뷰하는 
 
 ## 검증
 
-Node 24 이상, 25 미만에서 `npm run typecheck`, `npm test`, `npm run build`를 실행한다. 실제 Bitbucket·Slack·Confluence·Claude 요청 대신 mock과 임시 Git fixture를 사용한다. CRG CLI가 없으면 통합 테스트 일부가 skip될 수 있으며 결과에 표시한다.
+Node 25 이상, 26 미만에서 `npm run typecheck`, `npm test`, `npm run build`를 실행한다. 실제 Bitbucket·Slack·Confluence·Claude 요청 대신 mock과 임시 Git fixture를 사용한다. CRG CLI가 없으면 통합 테스트 일부가 skip될 수 있으며 결과에 표시한다.
 
 ## 유지할 동작
 
