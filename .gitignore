@@ -11,3 +11,4 @@ dist/
 .code-review-graph/
 coverage/
 *.log
+.headroom/
