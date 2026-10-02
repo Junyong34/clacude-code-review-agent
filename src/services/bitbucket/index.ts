@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { BOT_COMMENT_SIGNATURE } from '../../prompts/codeReview.js';
+import { REVIEW_DIFF_CONTEXT_LINES } from '../codeReview/diffFormatter.js';
 import { toHttpErrorLike } from '../../types/http.js';
 import type {
     BitbucketActivity,
@@ -41,12 +42,14 @@ export const fetchOpenPRs = async (): Promise<BitbucketOpenPullRequest[]> => {
 /**
  * 특정 PR의 diff JSON을 조회한다.
  * AI 리뷰 입력 생성은 이 응답을 diffFormatter에서 다시 변환해 처리한다.
+ * 서버 기본 context 대신 `contextLines`를 명시해 리뷰 입력의 주변 라인 수를 고정한다.
  */
 export const fetchPRDiff = async (prId: number): Promise<BitbucketDiffData> => {
     const url = `${getPrBaseUrl()}/${prId}/diff`;
-    console.log(`[code-review] fetchPRDiff URL: ${url}`);
+    console.log(`[code-review] fetchPRDiff URL: ${url} (contextLines=${REVIEW_DIFF_CONTEXT_LINES})`);
     try {
         const response = await axios.get<BitbucketDiffData>(url, {
+            params: { contextLines: REVIEW_DIFF_CONTEXT_LINES },
             headers: {
                 'Authorization': AUTH_HEADER,
                 'Accept': 'application/json'

@@ -21,7 +21,7 @@ test('public configuration has safe startup defaults and supports overrides', ()
         console.log('RESULT:' + JSON.stringify([
             c.ENABLE_DAILY_PR_CRON, c.ENABLE_WEEKLY_BLOG_CRON, c.CLAUDE_MODEL,
             c.CODE_REVIEW_CONTEXT_CLONE_PATH ?? null, c.CODE_REVIEW_MASTER_WORKTREE_DIR]));`;
-    assert.deepEqual(run(code), [false, false, 'claude-sonnet-5', null, '.worktrees/code-review-master']);
+    assert.deepEqual(run(code), [false, false, 'claude-sonnet-5-5', null, '.worktrees/code-review-master']);
     assert.deepEqual(run(code, {
         ENABLE_DAILY_PR_CRON: 'true', ENABLE_WEEKLY_BLOG_CRON: 'true', CLAUDE_MODEL: 'test-model',
         CODE_REVIEW_CONTEXT_CLONE_PATH: '/tmp/example-app', CODE_REVIEW_MASTER_WORKTREE_DIR: '/tmp/review-master',

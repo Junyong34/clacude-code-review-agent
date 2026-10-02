@@ -31,7 +31,7 @@ export const CODE_REVIEW_CONTEXT_CLONE_PATH = process.env.CODE_REVIEW_CONTEXT_CL
 export const CODE_REVIEW_MASTER_WORKTREE_DIR = process.env.CODE_REVIEW_MASTER_WORKTREE_DIR || '.worktrees/code-review-master';
 
 // 공개 배포 환경별 선택 설정
-export const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5';
+export const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5-5';
 export const JIRA_BASE_URL = process.env.JIRA_BASE_URL?.replace(/\/+$/, '');
 export const DEPLOY_CHECKLIST_URL = process.env.DEPLOY_CHECKLIST_URL;
 export const ENABLE_DAILY_PR_CRON = process.env.ENABLE_DAILY_PR_CRON === 'true';

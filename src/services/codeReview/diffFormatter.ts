@@ -18,8 +18,14 @@ import type { IncludedReviewFile, ReviewDiffChunk } from '../../types/review.js'
  * - diff를 문자 예산 기준으로 여러 청크로 나눈다. 문자열 중간이 아니라 파일/라인 경계에서만 나누고,
  *   예산을 넘는다고 라인을 버리지 않는다(모든 라인은 반드시 어느 청크엔가 포함된다).
  */
-const DEFAULT_MAX_CHARS = 40_000;
-const DEFAULT_CONTEXT_LINES = 3;
+const DEFAULT_MAX_CHARS = 100_000;
+
+/**
+ * 변경 라인 앞뒤로 보여줄 CONTEXT 라인 수. Bitbucket diff 요청(`contextLines`)과 청크 렌더링이 같은 값을 쓴다.
+ * 함수 단위를 넘어 주변 흐름까지 판단할 수 있도록 넓게 잡는다.
+ */
+export const REVIEW_DIFF_CONTEXT_LINES = 25;
+const DEFAULT_CONTEXT_LINES = REVIEW_DIFF_CONTEXT_LINES;
 
 type ReviewDiffChunksOptions = {
     maxChars?: number;

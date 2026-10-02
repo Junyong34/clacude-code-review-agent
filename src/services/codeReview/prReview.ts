@@ -5,7 +5,7 @@ import { reviewCode, GuardrailPolicyError, ClaudeBudgetExceededError } from './c
 import { buildReviewDiffChunks, collectValidLineKeys, isBitbucketDiffTruncated } from './diffFormatter.js';
 import { verifyComments } from './commentVerifier.js';
 import { ensureMasterWorktreeReady } from '../contextClone/index.js';
-import { buildSymbolReferenceHintText, buildSymbolReferenceMarkdown, findUnupdatedReferenceFiles } from './symbolReference.js';
+import { attachCallerSnippets, buildSymbolReferenceHintText, buildSymbolReferenceMarkdown, findUnupdatedReferenceFiles } from './symbolReference.js';
 import type { UnupdatedReferenceFile } from './symbolReference.js';
 import { analyzeChangedSymbolInterface } from './interfaceChange.js';
 import { buildReviewOverviewMarkdown, buildSlackReviewSummary, mergeChunkReviewData } from './reviewOutput.js';
@@ -258,11 +258,12 @@ export const runCodeReview = async (ctx: RunCodeReviewContext, options: RunCodeR
                     console.log(`[code-review] CRG 인터페이스 판정: ${entry.definitionFile}::${entry.symbol} → ${interfaceChange.kind} (${interfaceChange.summary})`);
                     return { ...entry, interfaceChange };
                 });
+                // 호출부 스니펫은 Claude 입력에만 쓰므로 CRG 전용 모드에서는 파일을 읽지 않는다.
+                if (!crgOnly) symbolReferenceEntries = attachCallerSnippets(masterWorktreePath, symbolReferenceEntries);
             } catch (error) {
                 console.error('[code-review] 심볼 참조 힌트 실패(무시):', (error as Error).message);
             }
         }
-        const referenceHintText = buildSymbolReferenceHintText(symbolReferenceEntries);
         symbolReferenceMarkdown = buildSymbolReferenceMarkdown(symbolReferenceEntries);
 
         if (crgOnly) {
@@ -272,7 +273,7 @@ export const runCodeReview = async (ctx: RunCodeReviewContext, options: RunCodeR
             return true;
         }
 
-        // diff를 문자 예산(기본 50,000자) 기준 청크로 나눈다. 작은 PR은 1개, 큰 PR은 여러 개가 된다.
+        // diff를 문자 예산(기본 100,000자) 기준 청크로 나눈다. 작은 PR은 1개, 큰 PR은 여러 개가 된다.
         console.log(`[code-review] diff 조회 완료 (변경 파일 ${changedFileCount}개) → 청크 분할 시작`);
         const chunks = buildReviewDiffChunks(diffData);
         if (chunks.length === 0) {
@@ -291,7 +292,12 @@ export const runCodeReview = async (ctx: RunCodeReviewContext, options: RunCodeR
         let anyOutputTruncated = false;
         for (const chunk of chunks) {
             const chunkLabel = `[PR #${prID} ${reviewKind} 청크 ${chunk.chunkIndex + 1}/${chunk.totalChunks}]`;
-            console.log(`[code-review] ${chunkLabel} 리뷰 시작 (${chunk.text.length}자, 파일 ${chunk.includedFiles.length}개)`);
+            // 서버 증거는 정의 파일이 이 청크에 있을 때만 넣는다. 정의 파일의 변경 라인이 없으면 코멘트를 고정할 곳이 없다.
+            const chunkFilePaths = new Set(chunk.includedFiles.map((file) => file.path));
+            const referenceHintText = buildSymbolReferenceHintText(
+                symbolReferenceEntries.filter((entry) => chunkFilePaths.has(entry.definitionFile)),
+            );
+            console.log(`[code-review] ${chunkLabel} 리뷰 시작 (${chunk.text.length}자, 파일 ${chunk.includedFiles.length}개, 서버 증거 ${referenceHintText.length}자)`);
             const { reviewData, isOutputTruncated } = await reviewCode(chunk.text, chunkLabel, ctx.prDescription, referenceHintText);
             anyOutputTruncated = anyOutputTruncated || isOutputTruncated;
             chunkResults.push({ reviewData, includedFiles: chunk.includedFiles });

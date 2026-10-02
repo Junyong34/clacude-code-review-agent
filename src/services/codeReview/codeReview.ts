@@ -69,7 +69,10 @@ const parseGuardrailMatches = (errorMessage: string): GuardrailMatch[] => {
     return matchValues.map((match, i) => ({ match, type: typeValues[i] ?? 'UNKNOWN' }));
 };
 
-const MAX_OUTPUT_TOKENS = 8192;
+// adaptive thinking 토큰도 max_tokens에 포함된다. effort를 medium으로 올리면 thinking이 늘어나
+// JSON 응답이 잘리지 않도록 low 시절(8192)보다 여유를 둔다.
+const MAX_OUTPUT_TOKENS = 16_384;
+const REVIEW_EFFORT = 'medium';
 const MODEL = CLAUDE_MODEL;
 
 const client = new Anthropic({
@@ -302,7 +305,9 @@ export const reviewCode = async (diffText: string, logLabel = '', prDescription?
     const userWrittenDescription = prDescription ? extractUserWrittenPrDescription(prDescription) : '';
     const description = userWrittenDescription ? maskSensitiveData(userWrittenDescription).trim() : '';
     const descriptionSection = description ? `PR 설명:\n${description}\n\n` : '';
-    const referenceHintSection = referenceHint ? `${referenceHint}\n\n` : '';
+    // 서버 증거에는 master 워크트리의 원본 코드(호출부 스니펫)가 들어가므로 diff와 같은 마스킹을 거친다.
+    const maskedReferenceHint = referenceHint ? maskSensitiveData(referenceHint).trim() : '';
+    const referenceHintSection = maskedReferenceHint ? `${maskedReferenceHint}\n\n` : '';
     const tag = logLabel ? `${logLabel} ` : '';
     const diagnosticId = createDiagnosticId();
     const requestClient = client.withOptions({ fetch: createDiagnosticFetch(diagnosticId) });
@@ -315,7 +320,7 @@ export const reviewCode = async (diffText: string, logLabel = '', prDescription?
         maxRetries: client.maxRetries,
         inputChars: diff.length,
         descriptionChars: description.length,
-        referenceHintChars: referenceHint?.length ?? 0,
+        referenceHintChars: maskedReferenceHint.length,
         apiKeyConfigured: Boolean(ANTHROPIC_API_KEY),
         runtime: {
             node: process.version,
@@ -350,7 +355,7 @@ export const reviewCode = async (diffText: string, logLabel = '', prDescription?
                 model: MODEL,
                 max_tokens: MAX_OUTPUT_TOKENS,
                 thinking: { type: 'adaptive' },
-                output_config: { effort: 'low' },
+                output_config: { effort: REVIEW_EFFORT },
                 system: [
                     {
                         type: 'text',
