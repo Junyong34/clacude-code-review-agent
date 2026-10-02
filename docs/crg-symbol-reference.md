@@ -1,6 +1,8 @@
 # CRG 심볼 참조 힌트 구성
 
-CRG는 변경 심볼을 참조하지만 이번 PR에서 수정되지 않은 파일을 찾아 Claude 입력과 최종 댓글에 힌트로 제공합니다. TypeScript 컴파일러 API로 인터페이스 변경 여부도 판정합니다. 힌트 계산 실패는 로그로 남기고 Claude 리뷰를 계속 시도합니다.
+CRG는 저장소의 심볼과 참조 관계를 그래프로 제공합니다. 서비스는 이 그래프에서 변경 심볼을 참조하지만 이번 PR에서 수정되지 않은 파일과 호출 함수를 찾고, TypeScript 컴파일러 API로 인터페이스 변경을 판정합니다. 결과는 Claude 입력(서버 증거)과 최종 댓글에 사용합니다. 힌트 계산 실패는 로그로 남기고 일반 모드의 Claude 리뷰를 계속 시도합니다.
+
+예제와 내부 처리 과정은 [CRG가 보완하는 맥락](code-review/crg-context.md), 스니펫 생략과 입력 범위는 [제한과 실패 처리](code-review/limits-and-failure-handling.md)를 참고하세요. 이 문서는 설치와 운영 설정을 다룹니다.
 
 ## 실행 조건
 
@@ -17,7 +19,7 @@ code-review-graph build --help
 code-review-graph update --help
 ```
 
-서버는 `build --repo <path> --quiet`, `update --repo <path> --quiet`를 실행합니다. MCP 서버는 사용하지 않습니다. `.code-review-graph/graph.db`의 `nodes`, `edges` 테이블을 읽고, 심볼 이름·파일·라인 범위와 CALLS/REFERENCES 관계를 사용합니다. 설치 버전의 CLI 옵션과 스키마가 이 계약과 일치해야 합니다.
+서버는 `build --repo <path> --quiet`, `update --repo <path> --quiet`를 실행합니다. MCP 서버는 사용하지 않습니다. `.code-review-graph/graph.db`의 `nodes`, `edges` 테이블을 읽고, 심볼 이름·파일·라인 범위와 CALLS/REFERENCES 관계를 사용합니다. 호출부 스니펫은 `edges.source_qualified`를 `nodes.qualified_name`에 조인해 참조 쪽 `Function`·`Test` 노드의 라인 범위를 얻습니다. `source_qualified` 컬럼이 없는 스키마면 호출부 없이 참조 파일만 조회합니다. 설치 버전의 CLI 옵션과 스키마가 이 계약과 일치해야 합니다.
 
 ## 설정과 생명주기
 
@@ -39,9 +41,26 @@ CODE_REVIEW_CRG_ONLY=false
 
 ## 실패와 CRG 전용 모드
 
-변수 미설정, Git 인증 오류, CLI 부재·옵션 불일치, DB/소스 조회 오류가 나면 힌트 없이 진행합니다. 최초 그래프 생성은 오래 걸릴 수 있습니다.
+변수 미설정, Git 인증 오류, CLI 부재·옵션 불일치, DB 조회 오류가 나면 일반 모드에서는 힌트 없이 진행합니다. 변경 전 소스를 읽거나 diff를 적용할 수 없으면 인터페이스 판정을 `unknown`으로 남기고, 호출부 파일을 읽을 수 없으면 해당 스니펫만 생략합니다. 최초 그래프 생성은 오래 걸릴 수 있습니다.
 
 `CODE_REVIEW_CRG_ONLY=true`이면 Claude를 호출하지 않고 CRG 결과만 댓글로 게시합니다. Claude가 `budget_exceeded`로 실패한 경우에도 이미 계산한 결과를 게시합니다. 두 경우 모두 완료 시그니처가 없어 정상 모드·예산 복구 후 리뷰를 다시 요청할 수 있습니다.
+
+## Claude에 전달하는 서버 증거
+
+정의 파일이 포함된 청크마다 아래 형식으로 diff 앞에 넣습니다. 구현만 바뀐 것으로 판정한 심볼은 제외합니다.
+
+```text
+[REF] fetchUserProfile(src/a.ts) [판정: parameter-breaking] 인자 1개 → 2개 — 참조하지만 이번 PR에서 변경되지 않은 파일: src/hooks/useProfile.ts
+[REF-CALLER] src/hooks/useProfile.ts:3-6 useProfile (master 기준, fetchUserProfile 사용부)
+3| export const useProfile = (id: string) => {
+4|   return fetchUserProfile(id);
+...
+[/REF-CALLER]
+```
+
+- 스니펫은 breaking 계열 판정을 먼저, `unknown`을 다음으로 채웁니다. PR당 20개, 심볼당 5개, 항목당 60줄, 전체 본문 30,000자, 원본 코드 한 줄 300자가 상한입니다. 함수가 60줄보다 길면 심볼이 처음 쓰인 줄 주변을 선택하며 이름을 찾지 못하면 함수 앞부분을 사용합니다.
+- 프롬프트는 diff의 시그니처 변경과 스니펫의 불일치가 함께 보이면 P1·P2를 허용합니다. 판정이 `unknown`이면 최대 P5이고, 코멘트는 여전히 diff ADD/REM 라인에만 고정합니다. 배경은 [ADR-0004](adr/0004-server-computed-evidence-over-tool-use.md)를 참고하세요.
+- 스니펫은 master 기준이므로 PR에서 새로 추가한 호출부나 다른 브랜치의 수정은 반영되지 않습니다.
 
 현재 빈 결과 표현은 “참조 없음”과 “조회 실패”를 구분하지 못합니다. 로그를 함께 확인하세요. 참조 파일 힌트 자체도 호출부 수정 누락을 확정하는 검사는 아닙니다.
 
@@ -51,4 +70,4 @@ CODE_REVIEW_CRG_ONLY=false
 
 `test/contextClone.test.ts`는 임시 Git 저장소에서 갱신과 원본 clone 보존을 검증합니다. CLI가 없으면 해당 통합 테스트 일부를 건너뜁니다. `test/symbolReference.test.ts`, `test/interfaceChange.test.ts`는 참조·시그니처 판정을 검증합니다.
 
-[파이프라인](ai-code-review-pr-flow.md) · [설계 결정](adr/0003-local-clone-worktree-for-review-context.md)
+[주제별 설명](code-review/README.md) · [파이프라인](ai-code-review-pr-flow.md) · [설계 결정](adr/0003-local-clone-worktree-for-review-context.md)
